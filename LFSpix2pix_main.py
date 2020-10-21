@@ -128,7 +128,7 @@ class LFSpix2pix_trainer:
         mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
         normalize = transforms.Normalize(mean, std)
         for idx, i in enumerate(test_index):
-            test_items = testlines[i]
+            test_items = testlines[i].split()
             test_imgA = Image.open(test_items[0])
             test_imgB = Image.open(test_items[1])
             test_tgt = torch.tensor(int(test_items[2]), dtype=torch.float32)
