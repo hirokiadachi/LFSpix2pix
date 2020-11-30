@@ -48,7 +48,7 @@ class EncodeBlock(nn.Module):
         return self.block(x)
     
 class DecodeBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel_size, stride, padding, bias=True, norm='batch', act='relu'):
+    def __init__(self, in_ch, out_ch, kernel_size, stride, padding, bias=True, norm='batch', act='relu', dropout=False):
         """
         in_ch: number of input channel size for the convolution layer.
         out_ch: number of output channel size for the convolution layer.
@@ -66,40 +66,49 @@ class DecodeBlock(nn.Module):
         if act == 'relu':    activation = nn.ReLU(inplace=True)
         elif act == 'lrelu':    activation = nn.LeakyReLU(negative_slope=0.2, inplace=True)
         elif act == 'tanh':    activation = nn.Tanh()
-        self.block = nn.Sequential(
-            nn.ConvTranspose2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias),
-            normalization,
-            nn.Dropout2d(p=0.5, inplace=True),
-            activation)
+        
+        if dropout:
+            self.block = nn.Sequential(
+                nn.ConvTranspose2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias),
+                normalization,
+                nn.Dropout2d(p=0.5, inplace=True),
+                activation)
+        else:
+            self.block = nn.Sequential(
+                nn.ConvTranspose2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias),
+                normalization,
+                activation)
         
     def forward(self, x):
         return self.block(x)
     
 class Pix2Pix_Generator(nn.Module):
-    def __init__(self, in_ch=3, init_ch=64, condition_dim=1):
+    def __init__(self, in_ch=3, init_ch=64, condition_dim=1, use_lfs=True):
         super(Pix2Pix_Generator, self).__init__()
+        self.use_lfs = use_lfs
         num_lfs = 0
         network_in_channels = []
         # Difine encoder: 3->64->128->256->512->512->512->512->512
-        self.e1 = EncodeBlock(in_ch, init_ch, kernel_size=4, stride=2, padding=1, bias=True, norm='none', act='relu')
-        self.e2 = EncodeBlock(init_ch, init_ch*2, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e3 = EncodeBlock(init_ch*2, init_ch*4, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e4 = EncodeBlock(init_ch*4, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e5 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e6 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e7 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.e8 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
+        self.e1 = EncodeBlock(in_ch, init_ch, kernel_size=4, stride=2, padding=1, bias=True, norm='none', act='lrelu')
+        self.e2 = EncodeBlock(init_ch, init_ch*2, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e3 = EncodeBlock(init_ch*2, init_ch*4, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e4 = EncodeBlock(init_ch*4, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e5 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e6 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e7 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
+        self.e8 = EncodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='lrelu')
         encoder_layers = [self.e1, self.e2, self.e3, self.e4, self.e5, self.e6, self.e7, self.e8]
         for layer in encoder_layers:
             for m in layer.modules():
                 if m.__class__.__name__ == "Conv2d":
+                    if m.in_channels == 3:    continue
                     num_lfs += m.in_channels
                     network_in_channels.append(m.in_channels)
         
         # Difine decoder:
-        self.d1 = DecodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.d2 = DecodeBlock(init_ch*8*2, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
-        self.d3 = DecodeBlock(init_ch*8*2, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
+        self.d1 = DecodeBlock(init_ch*8, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu', dropout=True)
+        self.d2 = DecodeBlock(init_ch*8*2, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu', dropout=True)
+        self.d3 = DecodeBlock(init_ch*8*2, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu', dropout=True)
         self.d4 = DecodeBlock(init_ch*8*2, init_ch*8, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
         self.d5 = DecodeBlock(init_ch*8*2, init_ch*4, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
         self.d6 = DecodeBlock(init_ch*4*2, init_ch*2, kernel_size=4, stride=2, padding=1, bias=True, norm='batch', act='relu')
@@ -109,6 +118,7 @@ class Pix2Pix_Generator(nn.Module):
         for layer in decoder_layers:
             for m in layer.modules():
                 if m.__class__.__name__ == "ConvTranspose2d":
+                    if m.in_channels == 3:    continue
                     num_lfs += m.in_channels
                     network_in_channels.append(m.in_channels)
                     
@@ -125,32 +135,64 @@ class Pix2Pix_Generator(nn.Module):
         x = x * mul_cond
         return x
         
-    def forward(self, x, y):
+    def pix2pix_with_lfs(self, x, y):
         proj_y = self.lfs(y)
-        e1 = self.e1(self.lfs_module(x, proj_y, 1))
-        e2 = self.e2(self.lfs_module(e1, proj_y, 2))
-        e3 = self.e3(self.lfs_module(e2, proj_y, 3))
-        e4 = self.e4(self.lfs_module(e3, proj_y, 4))
-        e5 = self.e5(self.lfs_module(e4, proj_y, 5))
-        e6 = self.e6(self.lfs_module(e5, proj_y, 6))
-        e7 = self.e7(self.lfs_module(e6, proj_y, 7))
-        e8 = self.e8(self.lfs_module(e7, proj_y, 8))
+        e1 = self.e1(x)
+        e2 = self.e2(self.lfs_module(e1, proj_y, 1))
+        e3 = self.e3(self.lfs_module(e2, proj_y, 2))
+        e4 = self.e4(self.lfs_module(e3, proj_y, 3))
+        e5 = self.e5(self.lfs_module(e4, proj_y, 4))
+        e6 = self.e6(self.lfs_module(e5, proj_y, 5))
+        e7 = self.e7(self.lfs_module(e6, proj_y, 6))
+        e8 = self.e8(self.lfs_module(e7, proj_y, 7))
         
-        d1 = self.d1(self.lfs_module(e8, proj_y, 9))
+        d1 = self.d1(self.lfs_module(e8, proj_y, 8))
         in_d1 = torch.cat((d1, e7), dim=1)
-        d2 = self.d2(self.lfs_module(in_d1, proj_y, 10))
+        d2 = self.d2(self.lfs_module(in_d1, proj_y, 9))
         in_d2 = torch.cat((d2, e6), dim=1)
-        d3 = self.d3(self.lfs_module(in_d2, proj_y, 11))
+        d3 = self.d3(self.lfs_module(in_d2, proj_y, 10))
         in_d3 = torch.cat((d3, e5), dim=1)
-        d4 = self.d4(self.lfs_module(in_d3, proj_y, 12))
+        d4 = self.d4(self.lfs_module(in_d3, proj_y, 11))
         in_d4 = torch.cat((d4, e4), dim=1)
-        d5 = self.d5(self.lfs_module(in_d4, proj_y, 13))
+        d5 = self.d5(self.lfs_module(in_d4, proj_y, 12))
         in_d5 = torch.cat((d5, e3), dim=1)
-        d6 = self.d6(self.lfs_module(in_d5, proj_y, 14))
+        d6 = self.d6(self.lfs_module(in_d5, proj_y, 13))
         in_d6 = torch.cat((d6, e2), dim=1)
-        d7 = self.d7(self.lfs_module(in_d6, proj_y, 15))
+        d7 = self.d7(self.lfs_module(in_d6, proj_y, 14))
         in_d7 = torch.cat((d7, e1), dim=1)
-        out = self.d8(self.lfs_module(in_d7, proj_y, 16))
+        out = self.d8(self.lfs_module(in_d7, proj_y, 15))
+        return out
+    
+    def pix2pix_without_lfs(self, x):
+        e1 = self.e1(x)
+        e2 = self.e2(e1)
+        e3 = self.e3(e2)
+        e4 = self.e4(e3)
+        e5 = self.e5(e4)
+        e6 = self.e6(e5)
+        e7 = self.e7(e6)
+        e8 = self.e8(e7)
+        
+        d1 = self.d1(e8)
+        in_d1 = torch.cat((d1, e7), dim=1)
+        d2 = self.d2(in_d1)
+        in_d2 = torch.cat((d2, e6), dim=1)
+        d3 = self.d3(in_d2)
+        in_d3 = torch.cat((d3, e5), dim=1)
+        d4 = self.d4(in_d3)
+        in_d4 = torch.cat((d4, e4), dim=1)
+        d5 = self.d5(in_d4)
+        in_d5 = torch.cat((d5, e3), dim=1)
+        d6 = self.d6(in_d5)
+        in_d6 = torch.cat((d6, e2), dim=1)
+        d7 = self.d7(in_d6)
+        in_d7 = torch.cat((d7, e1), dim=1)
+        out = self.d8(in_d7)
+        return out
+        
+    def forward(self, x, y=None):
+        if self.use_lfs:    out = self.pix2pix_with_lfs(x, y)
+        else:    out = self.pix2pix_without_lfs(x)
         return out
         
 class Pix2Pix_Discriminator(nn.Module):

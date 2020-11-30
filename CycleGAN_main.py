@@ -29,8 +29,9 @@ def config():
     p.add_argument('--epochs', type=int, default=200)
     p.add_argument('--decay_epoch', type=int, default=100)
     p.add_argument('--lambda_cyc', type=int, default=10)
-    p.add_argument('--lambda_id', type=int, default=0)
+    p.add_argument('--lambda_id', type=float, default=0)
     p.add_argument('--datapath', type=str, default='')
+    p.add_argument('--situations', nargs='*', help='You should select 2 situations in [sunny, cloudy, rainy, morning, night]. Recommended for you, when one selects a situation, one has better absolutely included in selected items since all situations other than sunny are extremely less data.')
     p.add_argument('--result', type=str, default='result')
     p.add_argument('--log_dir', type=str, default='logs')
     p.add_argument('--gpu', nargs='*', type=int, required=True)
@@ -47,7 +48,10 @@ class CycleGAN_trainer:
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean, std)])
-        train_data = CycleGAN_Dataset(datapath=conf.datapath, transforms=training_transforms)
+        if conf.situations:
+            train_data = CycleGAN_SIP_Dataset(datapath=conf.datapath, situations=conf.situations, transforms=training_transforms)
+        else:
+            train_data = CycleGAN_Dataset(datapath=conf.datapath, transforms=training_transforms)
         os.makedirs(conf.result, exist_ok=True)
         if os.path.isdir(conf.log_dir):    shutil.rmtree(conf.log_dir)
         self.tb = SummaryWriter(log_dir=conf.log_dir)
@@ -176,14 +180,19 @@ class CycleGAN_trainer:
         torch.save(self.D_b.state_dict(), os.path.join(self.conf.result, 'D_b'))
         
     def image_save(self, epoch):
-        test_imgA_path = os.path.join(self.conf.datapath, 'testA')
-        test_imgB_path = os.path.join(self.conf.datapath, 'testB')
+        if self.conf.situations:
+            test_imgA_path = os.path.join(self.conf.datapath, self.conf.situations[0])
+            test_imgB_path = os.path.join(self.conf.datapath, self.conf.situations[1])
+        else:
+            test_imgA_path = os.path.join(self.conf.datapath, 'testA')
+            test_imgB_path = os.path.join(self.conf.datapath, 'testB')
         test_imgA_list = os.listdir(test_imgA_path)
         test_imgB_list = os.listdir(test_imgB_path)
         to_tensor = transforms.ToTensor()
         mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
         normalize = transforms.Normalize(mean, std)
-        img_idx = np.random.randint(len(test_imgA_list), size=5)
+        test_length = min(len(test_imgA_list), len(test_imgB_list))
+        img_idx = np.random.randint(test_length, size=5)
         for idx, i in enumerate(img_idx):
             test_imgA = Image.open(os.path.join(test_imgA_path, test_imgA_list[i]))
             test_imgB = Image.open(os.path.join(test_imgB_path, test_imgB_list[i]))

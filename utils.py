@@ -33,33 +33,77 @@ class CycleGAN_Dataset(torch.utils.data.Dataset):
         
         return imgA, imgB
     
-######################################
-# Data Loader for training LFSpix2pix
-######################################
-class LFSpix2pix_Dataset(torch.utils.data.Dataset):
-    def __init__(self, txtpath, data_limit=4000, transforms=None):
+## This dataloader is for SIP dataset.
+class CycleGAN_SIP_Dataset(torch.utils.data.Dataset):
+    def __init__(self, datapath, situations=['sunny', 'rainy'], transforms=None):
         self.transforms = transforms
-        with open(txtpath, 'r') as f:
-            lines = f.readlines()
-        random.shuffle(lines)
-        self.lines = lines[:data_limit]
-        self.datalength = len(self.lines)
+        self.A_path = os.path.join(datapath, situations[0])
+        self.B_path = os.path.join(datapath, situations[1])
+        dataA_list = os.listdir(self.A_path)
+        dataB_list = os.listdir(self.B_path)
+        self.datalength = min(len(dataA_list), len(dataB_list))
+        self.dataA = dataA_list[:self.datalength]
+        self.dataB = dataB_list[:self.datalength]
         
     def __len__(self):
         return self.datalength
     
     def __getitem__(self, i):
-        split_item = self.lines[i].split()
-        imgA = Image.open(split_item[0]).convert('RGB')
-        imgB = Image.open(split_item[1]).convert('RGB')
-        tgt = torch.tensor(int(split_item[2]), dtype=torch.float32)
+        imgA = Image.open(os.path.join(self.A_path, self.dataA[i])).convert('RGB')
+        imgB = Image.open(os.path.join(self.B_path, self.dataB[i])).convert('RGB')
+        
+        if self.transforms:
+            imgA = self.transforms(imgA)
+            imgB = self.transforms(imgB)
+        
+        return imgA, imgB
+        
+        
+######################################
+# Data Loader for training LFSpix2pix
+######################################
+class LFSpix2pix_Dataset(torch.utils.data.Dataset):
+    def __init__(self, datalist, transforms=None):
+        self.transforms = transforms
+        random.shuffle(datalist)
+        self.datalist = datalist
+        self.datalength = len(self.datalist)
+        
+    def __len__(self):
+        return self.datalength
+    
+    def __getitem__(self, i):
+        split_item = self.datalist[i].split()
+        img_pathA, img_pathB = split_item[0], split_item[1]
+        imgA = Image.open(img_pathA).convert('RGB')
+        imgB = Image.open(img_pathB).convert('RGB')
+        tgt = torch.tensor(float(split_item[2]), dtype=torch.float32)
         
         if self.transforms:
             imgA = self.transforms(imgA)
             imgB = self.transforms(imgB)
         
         return imgA, imgB, tgt
+
+class Pix2Pix_Dataset(torch.utils.data.Dataset):
+    def __init__(self, datalist, transforms=None):
+        self.transforms = transforms
+        random.shuffle(datalist)
+        self.datalist = datalist
+        self.datalength = len(self.datalist)
+        
+    def __len__(self):
+        return self.datalength
     
+    def __getitem__(self, i):
+        split_item = self.datalist[i].split()
+        img_pathA, img_pathB = split_item[0], split_item[1]
+        imgA = Image.open(img_pathA).convert('RGB')
+        imgB = Image.open(img_pathB).convert('RGB')
+        if self.transforms:
+            imgA = self.transforms(imgA)
+            imgB = self.transforms(imgB)
+        return imgA, imgB
     
 #############################
 # Generared images buffer
